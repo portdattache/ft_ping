@@ -6,7 +6,7 @@
 /*   By: brice <brice@student.42.fr>                +#+  +:+       +#+        */
 /*                                                +#+#+#+#+#+   +#+           */
 /*   Created: 2026/01/22 13:46:23 by brice             #+#    #+#             */
-/*   Updated: 2026/02/02 08:35:35 by brice            ###   ########.fr       */
+/*   Updated: 2026/02/05 09:37:41 by brice            ###   ########.fr       */
 /*                                                                            */
 /* ************************************************************************** */
 
@@ -138,20 +138,35 @@ int     get_dest_info(t_destination *dst, const char *host)
     return (0);
 }
 
+double time_diff(struct timeval a, struct timeval b)
+{
+    double  ua;
+    double  ub;
+
+    ua = (double)a.tv_sec * 1000000.0 + (double)a.tv_usec;
+    ub = (double)b.tv_sec * 1000000.0 + (double)b.tv_usec;
+   
+    return((ua - ub) / 1000.0);
+}
+
 int     main(int ac, char **av)
 {
     t_options opt;
     t_destination dst;
-    const char *host;
-    int ret;
+    const char *host_arg = NULL;
+    struct timeval start, end;
+    double rtt;
 
-    ret = parse_line(ac, av, &opt, &host);
-    if (ret == 1)
-        return (0);
-    if (ret < 0)
+    if (parse_line(ac, av, &opt, &host_arg) != 0)
         return (1);
-    if (get_dest_info(&dst, host) < 0)
+    if (get_dest_info(&dst, host_arg) < 0)
         return (1);
     print_ping_dest(&dst, &opt);
+    printf("test RTT...\n");
+    gettimeofday(&start, NULL);
+    usleep(60000);
+    gettimeofday(&end, NULL);
+    rtt = time_diff(end, start);
+    printf("64 bytes from %s: icmp_seq=1 ttl=63 time=%.3f ms\n", dst.ip, rtt);
     return (0);
 }
