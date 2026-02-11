@@ -6,7 +6,7 @@
 /*   By: brice <brice@student.42.fr>                +#+  +:+       +#+        */
 /*                                                +#+#+#+#+#+   +#+           */
 /*   Created: 2026/01/22 13:46:23 by brice             #+#    #+#             */
-/*   Updated: 2026/01/29 10:39:12 by brice            ###   ########.fr       */
+/*   Updated: 2026/02/05 10:48:43 by brice            ###   ########.fr       */
 /*                                                                            */
 /* ************************************************************************** */
 
@@ -19,8 +19,6 @@ void    print_usage(void)
            "Options:\n"
            "  -v, --verbose   Verbose output\n"
            "  -?, --help      Display help information\n");
-           			fprintf(stderr, "Try 'ft_ping -?' for more information.\n");
-
 }
 
 void    print_ping_dest(const t_destination *dst, const t_options *opt)
@@ -36,6 +34,27 @@ bool    is_option(const char *s)
     return (s && s[0] == '-' && s[1] != '\0');
 }
 
+int     error_option(char c)
+{
+    fprintf(stderr, "ft_ping: invalid option -- '%c'\n", c);
+    fprintf(stderr, "Try 'ft_ping -?' for more information\n");
+    return (-1);
+}
+
+int     error_missing_host(void)
+{
+    fprintf(stderr, "ft_ping: missing host operand\n");
+    fprintf(stderr, "'Try ft_ping -?' for more information\n");
+    return (-1);
+}
+
+int     error_many_host(void)
+{
+    fprintf(stderr, "ft_pring: only one host allowed\n");
+    fprintf(stderr, "Try 'ft_ping -?' for more information\n");
+    return (-1);
+}
+
 int     handle_options(const char *arg, t_options *opt)
 {
     for (size_t i = 1; arg[i]; i++)
@@ -46,21 +65,20 @@ int     handle_options(const char *arg, t_options *opt)
             opt->help = true;
         else
         {
-            fprintf(stderr, "ft_ping: invalid option -- '%c'\n", arg[i]);
-            fprintf(stderr, "Try 'ft-ping -? for more information\n");
-            return (-1);
+            return (error_option(arg[i]));
         }
-        i++;
     }
     return (0);
 }
 
 int     parse_line(int ac, char **av, t_options *opt, const char **host)
 {
-    int host_count = 0;
+    int host_count;
 
     ft_memset(opt, 0, sizeof(*opt));
+
     *host = NULL;
+    host_count = 0;
 
     for (int i = 1; i < ac; i++)
     {
@@ -68,6 +86,11 @@ int     parse_line(int ac, char **av, t_options *opt, const char **host)
         {
             if (handle_options(av[i], opt) < 0)
                 return (-1);
+            if (opt->help)
+            {
+                print_usage();
+                    return (1);
+            }
         }
         else
         {
@@ -75,23 +98,10 @@ int     parse_line(int ac, char **av, t_options *opt, const char **host)
             host_count++;
         }
     }
-    if (opt->help)
-    {
-        print_usage();
-        return (1);
-    }
     if (host_count == 0)
-    {
-        fprintf(stderr, "ft_ping: missing host operand\n");
-        fprintf(stderr, "Try 'ft_ping -?' for more information\n");
-        return (-1);
-    }
+        return (error_missing_host());
     if (host_count > 1)
-    {
-        fprintf(stderr, "ft_ping: only one host allowed\n");
-        fprintf(stderr, "Try 'ft_ping -?' for more information\n");
-        return (-1);
-    }
+        return (error_many_host());
     return (0);
 }
 
@@ -105,8 +115,6 @@ int     get_dest_info(t_destination *dst, const char *host)
     res = NULL;
     
     hints.ai_family = AF_INET;
-    hints.ai_socktype = SOCK_RAW;
-    hints.ai_protocol = IPPROTO_ICMP;
     hints.ai_flags = AI_CANONNAME;
 
     if (getaddrinfo(host, NULL, &hints, &res) !=0 || !res)
@@ -116,10 +124,10 @@ int     get_dest_info(t_destination *dst, const char *host)
     }
     dst->input_host = host;
 	if (res->ai_canonname)
-		ft_strncpy(dst->host_name, res->ai_canonname, sizeof(dst->host_name) - 1);
+		ft_strlcpy(dst->host_name, res->ai_canonname, sizeof(dst->host_name));
 	else
-		ft_strncpy(dst->host_name, host, sizeof(dst->host_name) - 1);
-    ft_memcpy(&dst->addr, res->ai_addr, sizeof(dst->addr));
+		ft_strlcpy(dst->host_name, host, sizeof(dst->host_name));
+    ft_memcpy(&dst->addr, res->ai_addr, res->ai_addrlen);
     if (!inet_ntop(AF_INET, &dst->addr.sin_addr, dst->ip, sizeof(dst->ip)))
     {
         freeaddrinfo(res);
@@ -130,20 +138,38 @@ int     get_dest_info(t_destination *dst, const char *host)
     return (0);
 }
 
+double time_diff(struct timeval a, struct timeval b)
+{
+    double  ua;
+    double  ub;
+
+    ua = (double)a.tv_sec * 1000000.0 + (double)a.tv_usec;
+    ub = (double)b.tv_sec * 1000000.0 + (double)b.tv_usec;
+   
+    return((ua - ub) / 1000.0);
+}
+
 int     main(int ac, char **av)
 {
     t_options opt;
     t_destination dst;
-    const char *host;
+    const char *host_arg = NULL;
+    struct timeval start, end;
+    double rtt;
     int ret;
 
-    ret = parse_line(ac, av, &opt, &host);
-    if (ret == 1)
-        return (0);
+    ret = parse_line(ac, av, &opt, &host_arg);
     if (ret < 0)
         return (1);
-    if (get_dest_info(&dst, host) < 0)
+    if (ret == 1)
+        return (0);
+    if (get_dest_info(&dst, host_arg) < 0)
         return (1);
     print_ping_dest(&dst, &opt);
+    gettimeofday(&start, NULL);
+    usleep(60000);
+    gettimeofday(&end, NULL);
+    rtt = time_diff(end, start);
+    printf("%d bytes from %s(%s): icmp_seq=1 ttl=63 time=%.2f ms\n", PING_DATA_LEN, dst.host_name, dst.ip, rtt);
     return (0);
 }
